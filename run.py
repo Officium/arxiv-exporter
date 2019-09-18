@@ -25,10 +25,12 @@ if __name__ == '__main__':
 
     parser.add_argument('--past_days', type=int, default=7)
     parser.add_argument('--batch_size', type=int, default=100, help='max_results per request')
-    parser.add_argument('--primary_categories', nargs='+', default=['cs.LG', 'cs.AI'])
+    parser.add_argument('--primary_categories', nargs='+', default=['cs.LG', 'stat.ML'])
+    parser.add_argument('--filter_categories', nargs='+', default=['cs.CL', 'cs.RO', 'cs.CV'])
 
     option = parser.parse_args()
     categories = set(option.primary_categories)
+    filters = set(option.filter_categories)
     date_start = (datetime.now() - timedelta(days=option.past_days)).strftime('%Y-%m-%d')
     date_end = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 
@@ -51,7 +53,8 @@ if __name__ == '__main__':
             if date < date_start:  # out-of-date
                 done = True
                 break
-            if result['arxiv_primary_category']['term'] in categories:
+            if result['arxiv_primary_category']['term'] in categories and \
+                    all(tag['term'] not in filters for tag in result['tags']):
                 pdf_url = result['id']
                 for link in result['links']:
                     if link.get('title') == 'pdf':
