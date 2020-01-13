@@ -1,4 +1,5 @@
 import argparse
+import re
 import time
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -26,18 +27,20 @@ if __name__ == '__main__':
     parser.add_argument('--past_days', type=int, default=7)
     parser.add_argument('--batch_size', type=int, default=100, help='max_results per request')
     parser.add_argument('--primary_categories', nargs='+', default=['cs.LG', 'stat.ML'])
-    parser.add_argument('--filter_categories', nargs='+', default=['cs.CL', 'cs.RO', 'cs.CV'])
-    parser.add_argument('--filter_keywords', nargs='+', default=['distribution', 'reinforcement'])
 
     option = parser.parse_args()
     categories = set(option.primary_categories)
-    filters = set(option.filter_categories)
-    keywords = list(option.filter_keywords)
     date_start = (datetime.now() - timedelta(days=option.past_days)).strftime('%Y-%m-%d')
     date_end = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    authors = []
+    with open('authors', encoding='utf8') as f:
+        for line in f:
+            authors.append('(' + line.strip() + ')')
+    authors_pattern = re.compile(('|'.join(authors)).encode('unicode-escape').decode(), re.IGNORECASE)
 
     results = []
     start = 0
+    n = 0
     done = False
     while not done:
         batch_url = 'http://export.arxiv.org/api/query?' + urlencode({
@@ -47,7 +50,7 @@ if __name__ == '__main__':
             "sortBy": 'lastUpdatedDate',
             "sortOrder": 'descending'
         })
-        print(batch_url)
+        print(n, batch_url)
         for result in get_response(batch_url):
             date = result['updated'][:10]
             if date > date_end:  # today
@@ -55,22 +58,19 @@ if __name__ == '__main__':
             if date < date_start:  # out-of-date
                 done = True
                 break
-            if result['arxiv_primary_category']['term'] in categories and \
-                    all(tag['term'] not in filters for tag in result['tags']):
-                for keyword in keywords:
-                    if result['summary'].find(keyword) != -1:
-                        break
-                else:
-                    continue  # do not contain any keyword
-                pdf_url = result['id']
-                for link in result['links']:
-                    if link.get('title') == 'pdf':
-                        result['pdf_url'] = link['href']
-                results.append(
-                    '\n<p><B>{}</B> <a href="{}">Link</a></p>\n<p>{}</p>\n<p>{}</p>\n'
-                    .format(result['title'].rstrip('\n'), result['pdf_url'],
-                            ';'.join([d['name'] for d in result['authors']]),
-                            result['summary'].rstrip('\n')))
+            if result['arxiv_primary_category']['term'] in categories:
+                authors = r';'.join(d['name'] for d in result['authors'])
+                if re.match(authors_pattern, authors):
+                    n += 1
+                    title = '{}. '.format(n) + result['title'].rstrip('\n')
+                    pdf_url = result['id']
+                    summary = result['summary'].rstrip('\n')
+                    for link in result['links']:
+                        if link.get('title') == 'pdf':
+                            result['pdf_url'] = link['href']
+                    results.append(
+                        '\n<p><B>{}</B> <a href="{}">Link</a></p>\n<p>{}</p>\n<p>{}</p>\n'
+                        .format(title, result['pdf_url'], authors, summary))
         start += option.batch_size
         time.sleep(5)
 
